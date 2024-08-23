@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultra-Smooth Metronome App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <style>
+        .bpm-button {
+            @apply bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-400;
+            border: 2px solid #3b82f6; /* Tailwind's blue-500 color */
+        }
+        #bpmButtonsContainer {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+        }
+        /* Ensure the popup is centered and covers the screen */
+#helpPopup {
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+}
+
+    </style>
+</head>
+<body class="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 min-h-screen flex items-center justify-center">
+    <div class="bg-white bg-opacity-90 p-8 rounded-xl shadow-2xl w-[600px]"> <!-- Adjusted width -->
+        <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">Ultra-Smooth Metronome</h1>
+        
+        
+            <div class="mb-6 flex justify-center space-x-4">
+                <button id="playPauseBtn" class="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-400">Play</button>
+                <button id="stopBtn" class="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-red-400">Stop</button>
+                <button id="moveBtn" class="bg-yellow-500 text-white px-6 py-2 rounded-full hover:bg-yellow-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-400">Move</button>
+         </div>
+        
+        
+        <div class="mb-6 flex flex-col items-center">
+            <input type="range" id="bpmSlider" min="30" max="300" step="0.25" value="120" class="w-full appearance-none bg-gray-200 h-2 rounded-full outline-none opacity-70 transition hover:opacity-100">
+            <p class="text-center mt-2 text-gray-700">BPM: <span id="bpmDisplay" class="font-semibold">120.00</span></p>
+        </div>
+
+        <div class="mb-6 flex flex-col items-center space-y-2">
+            <label for="audioUpload" class="block mb-2 text-gray-700">Upload Sound (WAV or MP3):</label>
+            <input type="file" id="audioUpload" accept=".wav,.mp3" class="w-full text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100">
+        </div>
+
+     <div class="mb-6 flex flex-col items-center space-y-2 relative">
+    <h2 class="text-xl font-semibold mb-2 text-gray-800">Magic Mode</h2>
+    <div class="flex space-x-2 mb-2">
+        <input type="number" id="minBpm" placeholder="Min BPM" class="border rounded-lg px-3 py-2 w-1/2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <input type="number" id="maxBpm" placeholder="Max BPM" class="border rounded-lg px-3 py-2 w-1/2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+    </div>
+    <button id="magicBtn" class="bg-purple-500 text-white px-4 py-2 rounded-lg w-full hover:bg-purple-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-purple-400">Magic</button>
+
+    <!-- "?" Button -->
+    <button id="helpBtn" class="absolute top-0 right-0 bg-gray-300 text-gray-800 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-400 transition duration-300 focus:outline-none">?</button>
+</div>
+
+<!-- Pop-up Message -->
+<div id="helpPopup" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-4 rounded-lg shadow-lg max-w-xs text-center">
+        <h3 class="text-lg font-semibold mb-4">Steps to Magic Mode</h3>
+        <ul class="list-decimal list-inside text-left space-y-2">
+            <li>Enter min/max values</li>
+            <li>Press Stop button</li>
+            <li>Press Move button</li>
+            <li>Press Magic button</li>
+            <li>Press Play button</li>
+        </ul>
+    </div>
+</div>
+
+
+        <div class="mb-6 flex flex-wrap justify-center gap-2" id="bpmButtonsContainer">
+            <!-- Buttons will be dynamically inserted here -->
+        </div>
+    </div>
+
+  <script>
+
+
+let isPlaying = false;
+let bpm = 120;
+let sound = new Howl({
+    src: ['https://magicmetro3.vercel.app/metronomeSound.wav'],
+    volume: 1,
+    preload: true
+});
+
+let nextTickTime = 0;
+let magicMode = false;
+let minBpm, maxBpm;
+let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let previousBpm = bpm; // Track the previous BPM
+
+let magicInterval; // Define a variable to store the interval ID
+
+const playPauseBtn = document.getElementById('playPauseBtn');
+const stopBtn = document.getElementById('stopBtn');
+const bpmSlider = document.getElementById('bpmSlider');
+const bpmDisplay = document.getElementById('bpmDisplay');
+const audioUpload = document.getElementById('audioUpload');
+const magicBtn = document.getElementById('magicBtn');
+const bpmButtonsContainer = document.getElementById('bpmButtonsContainer');
+
+const bpmArray = [110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+
+// Dynamically create BPM buttons
+bpmArray.forEach(bpmValue => {
+    const button = document.createElement('button');
+    button.classList.add('bpm-button');
+    button.dataset.bpm = bpmValue;
+    button.textContent = `${bpmValue} BPM`;
+    bpmButtonsContainer.appendChild(button);
+});
+
+function scheduleNextTick(time) {
+    const secondsPerBeat = 60.0 / bpm;
+    nextTickTime += secondsPerBeat;
+
+    sound.play();
+
+    if (isPlaying) {
+        audioContext.resume().then(() => {
+            audioContext.currentTime = time;
+            const nextTickDelta = nextTickTime - audioContext.currentTime;
+            if (nextTickDelta > 0) {
+                setTimeout(() => scheduleNextTick(audioContext.currentTime), nextTickDelta * 1000);
+            } else {
+                scheduleNextTick(audioContext.currentTime);
+            }
+        });
+    }
+}
+
+function startMetronome() {
+    if (!isPlaying) {
+        isPlaying = true;
+        audioContext.resume().then(() => {
+            nextTickTime = audioContext.currentTime;
+            scheduleNextTick(nextTickTime);
+        });
+    }
+}
+
+function stopMetronome() {
+    isPlaying = false;
+}
+
+function checkMagicModeCondition() {
+    // Log the values for debugging
+    console.log(`Checking magic mode condition: magicMode = ${magicMode}, previousBpm = ${previousBpm}, bpm = ${bpm}`);
+
+    if (magicMode && previousBpm >= maxBpm && bpm < previousBpm) {
+        console.log(`Stopping magic mode due to BPM decrease after reaching maxBpm`);
+        stopMagicMode();
+    }
+    previousBpm = bpm; // Update previous BPM value
+}
+
+function stopMagicMode() {
+    magicMode = false;
+    magicBtn.textContent = 'Magic';
+    clearInterval(magicInterval); // Clear the interval when stopping magic mode
+    stopMetronome();
+    playPauseBtn.textContent = 'Play'; // Reset the play button to 'Play'
+}
+
+playPauseBtn.addEventListener('click', () => {
+    if (isPlaying) {
+        stopMetronome();
+        playPauseBtn.textContent = 'Play';
+    } else {
+        startMetronome();
+        playPauseBtn.textContent = 'Pause';
+    }
+});
+
+stopBtn.addEventListener('click', () => {
+    stopMetronome();
+    playPauseBtn.textContent = 'Play';
+    magicMode = false;
+    magicBtn.textContent = 'Magic';
+    clearInterval(magicInterval); // Ensure the interval is cleared
+});
+
+const moveBtn = document.getElementById('moveBtn');
+
+moveBtn.addEventListener('click', () => {
+    const minBpmValue = parseFloat(document.getElementById('minBpm').value);
+    
+    if (!isNaN(minBpmValue)) {
+        bpm = minBpmValue - 0.5;
+        bpmSlider.value = bpm;
+        bpmDisplay.textContent = bpm.toFixed(2);
+
+        if (isPlaying) {
+            stopMetronome();
+            startMetronome();
+        }
+    }
+});
+
+bpmSlider.addEventListener('input', () => {
+    bpm = parseFloat(bpmSlider.value);
+    bpmDisplay.textContent = bpm.toFixed(2);
+    if (magicMode) {
+        checkMagicModeCondition();
+    }
+});
+
+audioUpload.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            sound = new Howl({
+                src: [e.target.result],
+                volume: 1,
+                preload: true
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+
+magicBtn.addEventListener('click', () => {
+    magicMode = !magicMode;
+    magicBtn.textContent = magicMode ? 'Stop Magic' : 'Magic';
+    
+    if (magicMode) {
+        minBpm = parseFloat(document.getElementById('minBpm').value) || 30;
+        maxBpm = parseFloat(document.getElementById('maxBpm').value) || 300;
+        
+        previousBpm = bpm; // Initialize previousBpm for magic mode
+
+        function magicStep() {
+            if (!magicMode) return;
+
+            const prevBpm = bpm; // Log previous BPM for comparison
+            if (Math.random() < 0.65) {
+                bpm = Math.min(bpm + 0.5, maxBpm);
+            } else {
+                bpm = Math.max(bpm - 0.5, minBpm);
+            }
+            bpmSlider.value = bpm;
+            bpmDisplay.textContent = bpm.toFixed(2);
+
+            console.log(`Magic step: previousBpm = ${prevBpm}, newBpm = ${bpm}`);
+
+            checkMagicModeCondition();
+        }
+
+        // Start the magic step interval
+        magicInterval = setInterval(magicStep, 5000);
+    } else {
+        stopMagicMode(); // Ensure magic mode stops and updates the play button text
+    }
+});
+
+const helpBtn = document.getElementById('helpBtn');
+const helpPopup = document.getElementById('helpPopup');
+
+helpBtn.addEventListener('click', () => {
+    helpPopup.style.display = 'flex';
+});
+
+helpPopup.addEventListener('click', (event) => {
+    if (event.target === helpPopup) {
+        helpPopup.style.display = 'none';
+    }
+});
+
+// Ultra-smooth BPM transition
+function smoothBpmTransition() {
+    const targetBpm = parseFloat(bpmSlider.value);
+    const diff = targetBpm - bpm;
+    if (Math.abs(diff) > 0.01) {
+        bpm += diff * 0.05;
+        bpmDisplay.textContent = bpm.toFixed(2);
+        requestAnimationFrame(smoothBpmTransition);
+    } else {
+        bpm = targetBpm;
+        bpmDisplay.textContent = bpm.toFixed(2);
+    }
+}
+
+bpmSlider.addEventListener('input', smoothBpmTransition);
+
+// Ensure smooth playback during BPM changes
+setInterval(() => {
+    if (isPlaying) {
+        const currentTime = audioContext.currentTime;
+        const timeSinceLastTick = currentTime - nextTickTime;
+        const secondsPerBeat = 60.0 / bpm;
+        
+        if (timeSinceLastTick >= secondsPerBeat) {
+            nextTickTime = currentTime;
+            scheduleNextTick(currentTime);
+        }
+    }
+}, 10);
+
+// Set up BPM buttons
+bpmButtonsContainer.addEventListener('click', (event) => {
+    if (event.target.classList.contains('bpm-button')) {
+        bpm = parseFloat(event.target.getAttribute('data-bpm'));
+        bpmSlider.value = bpm;
+        bpmDisplay.textContent = bpm.toFixed(2);
+        if (isPlaying) {
+            stopMetronome();
+            startMetronome();
+        }
+    }
+});
+
+    
+
+</script>
+
+
+</body>
+</html>
